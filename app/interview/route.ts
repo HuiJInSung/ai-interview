@@ -6,12 +6,21 @@ type OpenAIMessage = { role: "system" | "user" | "assistant"; content: string };
 
 const MODEL = "gpt-4o-mini";
 
-async function callOpenAI(messages: OpenAIMessage[], json = false) {
+// Must match API_KEY_HEADER in app/lib/apiKey.ts
+const API_KEY_HEADER = "x-openai-api-key";
+
+class OpenAIError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
+async function callOpenAI(apiKey: string, messages: OpenAIMessage[], json = false) {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
       model: MODEL,
@@ -22,7 +31,7 @@ async function callOpenAI(messages: OpenAIMessage[], json = false) {
   });
 
   if (!res.ok) {
-    throw new Error(`OpenAI API error ${res.status}: ${await res.text()}`);
+    throw new OpenAIError(res.status, `OpenAI API error ${res.status}: ${await res.text()}`);
   }
 
   const data = await res.json();
@@ -37,8 +46,12 @@ function toOpenAIMessages(history: ChatMessage[]): OpenAIMessage[] {
 }
 
 export async function POST(request: Request) {
-  if (!process.env.OPENAI_API_KEY) {
-    return Response.json({ error: "伺服器未設定 OPENAI_API_KEY" }, { status: 500 });
+  const apiKey = request.headers.get(API_KEY_HEADER)?.trim();
+  if (!apiKey) {
+    return Response.json(
+      { error: "請先在右上角「設定 API Key」輸入你的 OpenAI API Key", code: "missing_api_key" },
+      { status: 401 },
+    );
   }
 
   const body = await request.json().catch(() => null);
@@ -80,7 +93,7 @@ ${jobDescription}
 - 一次只問一個問題，簡潔清楚，使用繁體中文。
 - 不要在此時給出評分或評語。`;
 
-      const question = await callOpenAI([
+      const question = await callOpenAI(apiKey, [
         { role: "system", content: system },
         ...toOpenAIMessages(messages),
       ]);
@@ -107,6 +120,7 @@ ${jobDescription}
 }`;
 
     const raw = await callOpenAI(
+      apiKey,
       [{ role: "system", content: system }, ...toOpenAIMessages(messages)],
       true,
     );
@@ -115,6 +129,18 @@ ${jobDescription}
     return Response.json({ type: "evaluation", ...evaluation });
   } catch (err) {
     console.error(err);
+    if (err instanceof OpenAIError && err.status === 401) {
+      return Response.json(
+        { error: "API Key 無效，請到「設定 API Key」重新輸入", code: "invalid_api_key" },
+        { status: 401 },
+      );
+    }
+    if (err instanceof OpenAIError && err.status === 429) {
+      return Response.json(
+        { error: "OpenAI 額度不足或請求太頻繁，請確認帳戶餘額後再試" },
+        { status: 429 },
+      );
+    }
     return Response.json({ error: "AI 面試官暫時無法回應，請稍後再試" }, { status: 502 });
   }
 }

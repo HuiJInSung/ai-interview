@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import SiteHeader from "../components/SiteHeader";
 import SiteFooter from "../components/SiteFooter";
+import { useOpenSettings } from "../components/ApiKeySettings";
+import { API_KEY_HEADER, getApiKey, useApiKey } from "../lib/apiKey";
 
 type ChatMessage = { role: "interviewer" | "candidate"; content: string };
 
@@ -30,6 +32,9 @@ export default function PracticePage() {
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [keyError, setKeyError] = useState(false);
+  const apiKey = useApiKey();
+  const openSettings = useOpenSettings();
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const answered = messages.filter((m) => m.role === "candidate").length;
@@ -42,14 +47,18 @@ export default function PracticePage() {
   async function askInterviewer(history: ChatMessage[]) {
     setLoading(true);
     setError("");
+    setKeyError(false);
     try {
       const res = await fetch("/interview", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", [API_KEY_HEADER]: getApiKey() },
         body: JSON.stringify({ jobDescription, messages: history }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "發生錯誤");
+      if (!res.ok) {
+        setKeyError(res.status === 401);
+        throw new Error(data.error ?? "發生錯誤");
+      }
 
       if (data.type === "question") {
         setMessages([...history, { role: "interviewer", content: data.content }]);
@@ -65,6 +74,10 @@ export default function PracticePage() {
 
   function start() {
     if (!jobDescription.trim()) return;
+    if (!apiKey) {
+      openSettings();
+      return;
+    }
     setStarted(true);
     askInterviewer([]);
   }
@@ -87,6 +100,7 @@ export default function PracticePage() {
     setAnswer("");
     setEvaluation(null);
     setError("");
+    setKeyError(false);
   }
 
   return (
@@ -101,6 +115,14 @@ export default function PracticePage() {
                 <h1 className="font-serif text-4xl leading-tight font-black sm:text-5xl">你想練習哪個職缺？</h1>
                 <p className="text-ink-soft">貼上職缺描述，面試官會根據內容出題。越完整，題目越貼近真實面試。</p>
               </div>
+              {!apiKey && (
+                <div className="flex items-center justify-between gap-3 rounded-2xl border border-accent bg-accent-soft px-5 py-3.5 text-sm">
+                  <span>面試官使用你自己的 OpenAI API Key，開始前請先設定。</span>
+                  <button onClick={openSettings} className="shrink-0 font-medium underline underline-offset-4">
+                    設定 API Key
+                  </button>
+                </div>
+              )}
               <div className="flex flex-col gap-4 rounded-3xl border border-ink bg-paper p-5 shadow-[6px_6px_0_0_var(--ink)] sm:p-6">
                 <label htmlFor="jd" className="sr-only">職缺描述</label>
                 <textarea
@@ -176,9 +198,16 @@ export default function PracticePage() {
                 {error && (
                   <div className="flex items-center justify-between gap-3 rounded-2xl border border-accent bg-accent-soft px-5 py-3.5 text-sm">
                     <span>{error}</span>
-                    <button onClick={retry} className="shrink-0 font-medium underline underline-offset-4">
-                      重試
-                    </button>
+                    <span className="flex shrink-0 gap-4">
+                      {keyError && (
+                        <button onClick={openSettings} className="font-medium underline underline-offset-4">
+                          設定 API Key
+                        </button>
+                      )}
+                      <button onClick={retry} className="font-medium underline underline-offset-4">
+                        重試
+                      </button>
+                    </span>
                   </div>
                 )}
               </section>

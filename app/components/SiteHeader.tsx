@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ApiKeyButton } from "./ApiKeySettings";
 
 export function Logo() {
   return (
@@ -25,18 +26,21 @@ export default function SiteHeader({ minimal = false }: { minimal?: boolean }) {
             <Link href="/#faq" className="hover:text-ink">常見問題</Link>
           </nav>
         )}
-        {minimal ? (
-          <Link href="/" className="text-sm text-ink-soft hover:text-ink">
-            ← 回首頁
-          </Link>
-        ) : (
-          <Link
-            href="/practice"
-            className="rounded-full bg-ink px-4 py-2 text-sm font-medium text-paper transition-colors hover:bg-accent"
-          >
-            開始練習
-          </Link>
-        )}
+        <div className="flex items-center gap-3">
+          <ApiKeyButton />
+          {minimal ? (
+            <Link href="/" className="text-sm text-ink-soft hover:text-ink">
+              ← 回首頁
+            </Link>
+          ) : (
+            <Link
+              href="/practice"
+              className="rounded-full bg-ink px-4 py-2 text-sm font-medium text-paper transition-colors hover:bg-accent"
+            >
+              開始練習
+            </Link>
+          )}
+        </div>
       </div>
     </header>
   );
